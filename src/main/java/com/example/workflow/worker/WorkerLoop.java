@@ -51,7 +51,7 @@ public class WorkerLoop {
 
     private void runClaimed(ClaimedStep step) {
         try {
-            executor.run(step, workerId);
+            executor.run(step, workerId, leaseMs);
         } catch (RuntimeException e) {
             log.error("unexpected error while running step {}", step.id(), e);
         } finally {

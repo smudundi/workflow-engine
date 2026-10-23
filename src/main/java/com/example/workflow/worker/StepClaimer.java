@@ -34,7 +34,6 @@ public class StepClaimer {
         if (limit <= 0) {
             return List.of();
         }
-        // Lease is set but not renewed yet; heartbeats arrive with US2.2.
         List<ClaimRow> rows = jdbc.sql("""
                 UPDATE step SET status = 'RUNNING', attempt = attempt + 1, lease_owner = :worker,
                        lease_expires_at = now() + CAST(:lease AS interval),

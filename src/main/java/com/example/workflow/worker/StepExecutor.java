@@ -15,26 +15,36 @@ public class StepExecutor {
 
     private final HandlerRegistry handlers;
     private final StepCompletion completion;
+    private final LeaseHeartbeat heartbeat;
 
-    public StepExecutor(HandlerRegistry handlers, StepCompletion completion) {
+    public StepExecutor(HandlerRegistry handlers, StepCompletion completion, LeaseHeartbeat heartbeat) {
         this.handlers = handlers;
         this.completion = completion;
+        this.heartbeat = heartbeat;
     }
 
     /** Runs the step's handler outside any transaction and records the outcome. */
-    public void run(ClaimedStep step, String workerId) {
+    public void run(ClaimedStep step, String workerId, long leaseMs) {
         // No DB transaction is open here, so no row lock is held during handler code.
-        StepResult result;
+        LeaseHeartbeat.Watch lease = heartbeat.watch(step, workerId, leaseMs, Thread.currentThread());
+        StepResult result = null;
+        RuntimeException failure = null;
         try {
             StepHandler handler = handlers.get(step.type());
             result = handler.execute(new StepContext(step.id().toString(), step.attempt(),
                     step.input(), step.upstreamOutputs()));
         } catch (RuntimeException e) {
-            log.warn("step {} attempt {} failed: {}", step.id(), step.attempt(), e.getMessage());
-            completion.fail(step, workerId, messageOf(e));
-            return;
+            failure = e;
         }
-        if (!completion.complete(step, workerId, result.output())) {
+        lease.stop();
+        // Clears a late interrupt so it cannot leak into the next step on this thread.
+        Thread.interrupted();
+        if (lease.lost()) {
+            log.warn("step {} attempt {} lost its lease; result discarded", step.id(), step.attempt());
+        } else if (failure != null) {
+            log.warn("step {} attempt {} failed: {}", step.id(), step.attempt(), failure.getMessage());
+            completion.fail(step, workerId, messageOf(failure));
+        } else if (!completion.complete(step, workerId, result.output())) {
             log.warn("step {} attempt {} lost its lease; result discarded", step.id(), step.attempt());
         }
     }
