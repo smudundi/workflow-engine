@@ -4,7 +4,7 @@
     {
       "id": "A",
       "type": "SLEEP",
-      "input": { "durationMs": 60000 },
+      "input": { "durationMs": 20000 },
       "retry": { "maxAttempts": 3, "initialDelayMs": 1000, "multiplier": 2.0, "maxDelayMs": 10000 }
     },
     {
