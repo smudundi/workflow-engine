@@ -22,7 +22,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-@SpringBootTest
+@SpringBootTest(properties = "engine.worker.enabled=false")
 @Testcontainers
 class WorkflowSubmitRollbackTests {
 
