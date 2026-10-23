@@ -48,6 +48,17 @@ class WorkflowControllerTests {
             }
             """;
 
+    @Test
+    void apiDocsDescribeEndpointsAndSampleExample() throws Exception {
+        mvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/workflows'].post.summary").value("Submit a workflow"))
+                .andExpect(jsonPath("$.paths['/api/workflows/{id}'].get.responses['404']").exists())
+                .andExpect(jsonPath("$.paths['/api/workflows/{id}/steps/{stepId}'].get.responses['404']").exists())
+                .andExpect(jsonPath("$.paths['/api/workflows'].post.requestBody.content['application/json'].examples"
+                        + "['A to (B,C) to D to E'].value.name").value("parallel-data-pipeline"));
+    }
+
     private String submit(String body) throws Exception {
         String response = mvc.perform(post("/api/workflows").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())

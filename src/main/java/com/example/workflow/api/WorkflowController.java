@@ -8,6 +8,13 @@ import com.example.workflow.domain.StepSpec;
 import com.example.workflow.domain.WorkflowDefinition;
 import com.example.workflow.engine.WorkflowService;
 import com.example.workflow.engine.WorkflowService.SubmittedWorkflow;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
@@ -15,6 +22,7 @@ import java.util.Objects;
 import java.util.UUID;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -26,7 +34,22 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/workflows")
 @Profile({"api", "all"})
+@Tag(name = "Workflows", description = "Submit workflows and query their status")
 public class WorkflowController {
+
+    // Sample from docs/samples/parallel.json: A runs first, B and C run in parallel, D merges, E publishes.
+    private static final String SAMPLE_WORKFLOW = """
+            {
+              "name": "parallel-data-pipeline",
+              "steps": [
+                {"id": "A", "type": "SLEEP", "input": {"durationMs": 500}},
+                {"id": "B", "type": "SLEEP", "input": {"durationMs": 3000}, "dependsOn": ["A"]},
+                {"id": "C", "type": "SLEEP", "input": {"durationMs": 3000}, "dependsOn": ["A"]},
+                {"id": "D", "type": "TRANSFORM", "input": {"op": "merge"}, "dependsOn": ["B", "C"]},
+                {"id": "E", "type": "LOG", "input": {"message": "results published"}, "dependsOn": ["D"]}
+              ]
+            }
+            """;
 
     private final WorkflowService service;
     private final EngineProperties.Retry retryDefaults;
@@ -36,18 +59,44 @@ public class WorkflowController {
         this.retryDefaults = properties.retry();
     }
 
+    @Operation(summary = "Submit a workflow", description = "Validates the DAG and stores the workflow as PENDING.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Workflow accepted"),
+            @ApiResponse(responseCode = "400", description = "Invalid definition",
+                    content = @Content(mediaType = "application/problem+json",
+                            schema = @Schema(implementation = ProblemDetail.class)))
+    })
     @PostMapping
-    public ResponseEntity<SubmitWorkflowResponse> submit(@Valid @RequestBody SubmitWorkflowRequest request) {
+    public ResponseEntity<SubmitWorkflowResponse> submit(
+            @Valid @RequestBody
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(content = @Content(
+                    mediaType = "application/json",
+                    examples = @ExampleObject(name = "A to (B,C) to D to E", value = SAMPLE_WORKFLOW)))
+            SubmitWorkflowRequest request) {
         SubmittedWorkflow submitted = service.submit(toDefinition(request));
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(new SubmitWorkflowResponse(submitted.id(), submitted.status().name()));
     }
 
+    @Operation(summary = "Get workflow status", description = "Returns the workflow with all steps and attempt history.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Workflow found"),
+            @ApiResponse(responseCode = "404", description = "Unknown workflow id",
+                    content = @Content(mediaType = "application/problem+json",
+                            schema = @Schema(implementation = ProblemDetail.class)))
+    })
     @GetMapping("/{id}")
     public WorkflowResponse get(@PathVariable UUID id) {
         return WorkflowResponse.from(service.getWorkflow(id));
     }
 
+    @Operation(summary = "Get step status", description = "Returns one step with its attempt history. stepId is the step key.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Step found"),
+            @ApiResponse(responseCode = "404", description = "Unknown workflow id or step key",
+                    content = @Content(mediaType = "application/problem+json",
+                            schema = @Schema(implementation = ProblemDetail.class)))
+    })
     @GetMapping("/{id}/steps/{stepId}")
     public WorkflowResponse.StepResponse getStep(@PathVariable UUID id, @PathVariable String stepId) {
         return WorkflowResponse.StepResponse.from(service.getStep(id, stepId));
