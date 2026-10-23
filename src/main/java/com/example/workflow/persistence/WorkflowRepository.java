@@ -1,5 +1,6 @@
 package com.example.workflow.persistence;
 
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -11,6 +12,24 @@ public class WorkflowRepository {
 
     public WorkflowRepository(JdbcClient jdbc) {
         this.jdbc = jdbc;
+    }
+
+    public Optional<WorkflowRow> findById(UUID id) {
+        return jdbc.sql("""
+                SELECT id, name, status, error, created_at, started_at, completed_at
+                FROM workflow
+                WHERE id = :id
+                """)
+                .param("id", id)
+                .query((rs, n) -> new WorkflowRow(
+                        rs.getObject("id", UUID.class),
+                        rs.getString("name"),
+                        rs.getString("status"),
+                        rs.getString("error"),
+                        Columns.instant(rs, "created_at"),
+                        Columns.instant(rs, "started_at"),
+                        Columns.instant(rs, "completed_at")))
+                .optional();
     }
 
     public UUID insert(String name, String status, String definitionJson) {

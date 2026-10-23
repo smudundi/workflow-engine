@@ -12,9 +12,12 @@ import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -38,6 +41,16 @@ public class WorkflowController {
         SubmittedWorkflow submitted = service.submit(toDefinition(request));
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(new SubmitWorkflowResponse(submitted.id(), submitted.status().name()));
+    }
+
+    @GetMapping("/{id}")
+    public WorkflowResponse get(@PathVariable UUID id) {
+        return WorkflowResponse.from(service.getWorkflow(id));
+    }
+
+    @GetMapping("/{id}/steps/{stepId}")
+    public WorkflowResponse.StepResponse getStep(@PathVariable UUID id, @PathVariable String stepId) {
+        return WorkflowResponse.StepResponse.from(service.getStep(id, stepId));
     }
 
     private WorkflowDefinition toDefinition(SubmitWorkflowRequest request) {

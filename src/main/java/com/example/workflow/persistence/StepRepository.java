@@ -1,6 +1,13 @@
 package com.example.workflow.persistence;
 
 import com.example.workflow.domain.RetryPolicy;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -8,10 +15,33 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class StepRepository {
 
-    private final JdbcClient jdbc;
+    private static final String STEP_COLUMNS = """
+            id, step_key, type, status, attempt, max_attempts, output, last_error,
+            next_run_at, started_at, completed_at
+            """;
 
-    public StepRepository(JdbcClient jdbc) {
+    private final JdbcClient jdbc;
+    private final ObjectMapper json;
+
+    public StepRepository(JdbcClient jdbc, ObjectMapper json) {
         this.jdbc = jdbc;
+        this.json = json;
+    }
+
+    /** Steps of a workflow in key order. */
+    public List<StepRow> findByWorkflow(UUID workflowId) {
+        return jdbc.sql("SELECT " + STEP_COLUMNS + " FROM step WHERE workflow_id = :workflowId ORDER BY step_key")
+                .param("workflowId", workflowId)
+                .query((rs, n) -> mapStep(rs))
+                .list();
+    }
+
+    public Optional<StepRow> findByWorkflowAndKey(UUID workflowId, String stepKey) {
+        return jdbc.sql("SELECT " + STEP_COLUMNS + " FROM step WHERE workflow_id = :workflowId AND step_key = :stepKey")
+                .param("workflowId", workflowId)
+                .param("stepKey", stepKey)
+                .query((rs, n) -> mapStep(rs))
+                .optional();
     }
 
     public void insertStep(UUID workflowId, String stepKey, String type, String inputJson,
@@ -43,5 +73,31 @@ public class StepRepository {
                 .param("stepKey", stepKey)
                 .param("dependsOnKey", dependsOnKey)
                 .update();
+    }
+
+    private StepRow mapStep(ResultSet rs) throws SQLException {
+        return new StepRow(
+                rs.getObject("id", UUID.class),
+                rs.getString("step_key"),
+                rs.getString("type"),
+                rs.getString("status"),
+                rs.getInt("attempt"),
+                rs.getInt("max_attempts"),
+                readJson(rs.getString("output")),
+                rs.getString("last_error"),
+                Columns.instant(rs, "next_run_at"),
+                Columns.instant(rs, "started_at"),
+                Columns.instant(rs, "completed_at"));
+    }
+
+    private JsonNode readJson(String text) {
+        if (text == null) {
+            return null;
+        }
+        try {
+            return json.readTree(text);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Stored step output is not valid JSON", e);
+        }
     }
 }

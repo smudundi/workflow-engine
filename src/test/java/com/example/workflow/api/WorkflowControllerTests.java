@@ -1,15 +1,19 @@
 package com.example.workflow.api;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.jayway.jsonpath.JsonPath;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -28,6 +32,9 @@ class WorkflowControllerTests {
     @Autowired
     MockMvc mvc;
 
+    @Autowired
+    JdbcTemplate jdbc;
+
     private static final String VALID = """
             {
               "name": "parallel",
@@ -40,6 +47,13 @@ class WorkflowControllerTests {
               ]
             }
             """;
+
+    private String submit(String body) throws Exception {
+        String response = mvc.perform(post("/api/workflows").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        return JsonPath.read(response, "$.id");
+    }
 
     @Test
     void validDagReturns201WithIdAndPendingStatus() throws Exception {
@@ -69,6 +83,52 @@ class WorkflowControllerTests {
         mvc.perform(post("/api/workflows").contentType(MediaType.APPLICATION_JSON).content(unknown))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors[0]").value(org.hamcrest.Matchers.containsString("unknown type")));
+    }
+
+    @Test
+    void getWorkflowReturnsStepsWithAttemptHistory() throws Exception {
+        String id = submit(VALID);
+        UUID stepId = jdbc.queryForObject(
+                "SELECT id FROM step WHERE workflow_id = ? AND step_key = 'A'", UUID.class, UUID.fromString(id));
+        jdbc.update("UPDATE step SET status = 'COMPLETED', attempt = 1, output = CAST(? AS jsonb) WHERE id = ?",
+                "{\"message\": \"start\"}", stepId);
+        jdbc.update("INSERT INTO step_attempt (step_id, attempt_no, worker_id, status, finished_at) "
+                + "VALUES (?, 1, 'worker-1', 'SUCCEEDED', now())", stepId);
+
+        mvc.perform(get("/api/workflows/" + id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.steps.length()").value(4))
+                .andExpect(jsonPath("$.steps[0].stepId").value("A"))
+                .andExpect(jsonPath("$.steps[0].status").value("COMPLETED"))
+                .andExpect(jsonPath("$.steps[0].output.message").value("start"))
+                .andExpect(jsonPath("$.steps[0].attempts[0].workerId").value("worker-1"))
+                .andExpect(jsonPath("$.steps[1].attempts.length()").value(0));
+    }
+
+    @Test
+    void getStepReturnsSingleStep() throws Exception {
+        String id = submit(VALID);
+
+        mvc.perform(get("/api/workflows/" + id + "/steps/D"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stepId").value("D"))
+                .andExpect(jsonPath("$.type").value("TRANSFORM"))
+                .andExpect(jsonPath("$.maxAttempts").value(2));
+    }
+
+    @Test
+    void unknownWorkflowReturns404() throws Exception {
+        mvc.perform(get("/api/workflows/" + UUID.randomUUID()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void unknownStepReturns404() throws Exception {
+        String id = submit(VALID);
+
+        mvc.perform(get("/api/workflows/" + id + "/steps/Z"))
+                .andExpect(status().isNotFound());
     }
 
     @Test
