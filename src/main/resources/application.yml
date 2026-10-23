@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: workflow-engine
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/workflow}
+    username: ${SPRING_DATASOURCE_USERNAME:workflow}
+    password: ${SPRING_DATASOURCE_PASSWORD:workflow}
+  flyway:
+    locations: classpath:db/migration
+
+server:
+  port: 8080
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
+engine:
+  role: ${ENGINE_ROLE:all}
