@@ -1,6 +1,9 @@
 spring:
   application:
     name: workflow-engine
+  # ENGINE_ROLE selects the Spring profile (api, worker, or all) and its Flyway/Swagger settings.
+  profiles:
+    active: ${ENGINE_ROLE:all}
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/workflow}
     username: ${SPRING_DATASOURCE_USERNAME:workflow}

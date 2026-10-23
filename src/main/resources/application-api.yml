@@ -1,0 +1,10 @@
+# API role owns schema migrations and serves Swagger UI.
+spring:
+  flyway:
+    enabled: true
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
