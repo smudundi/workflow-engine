@@ -118,7 +118,7 @@ public class StepCompletion {
         }
     }
 
-    private void failWorkflow(UUID workflowId, String error) {
+    void failWorkflow(UUID workflowId, String error) {
         String status = lockWorkflowStatus(workflowId);
         if ("PENDING".equals(status) || "RUNNING".equals(status)) {
             jdbc.sql("UPDATE workflow SET status = 'FAILED', error = :error, completed_at = now(), "
