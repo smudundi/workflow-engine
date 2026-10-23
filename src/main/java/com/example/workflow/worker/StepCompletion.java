@@ -110,7 +110,7 @@ public class StepCompletion {
     private void finishAttempt(ClaimedStep step, String status, String error) {
         jdbc.sql("""
                 UPDATE step_attempt SET status = :status, error = :error, finished_at = clock_timestamp()
-                WHERE step_id = :id AND attempt_no = :attempt
+                WHERE step_id = :id AND attempt_no = :attempt AND status = 'RUNNING'
                 """)
                 .param("status", status)
                 .param("error", error)
