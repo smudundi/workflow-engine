@@ -49,6 +49,9 @@ public class WorkflowService {
     public record WorkflowDetail(WorkflowRow workflow, List<StepDetail> steps) {
     }
 
+    public record WorkflowPage(List<WorkflowRow> items, int page, int size, long totalElements) {
+    }
+
     @Transactional
     public SubmittedWorkflow submit(WorkflowDefinition definition) {
         var errors = validator.validate(definition.steps());
@@ -91,6 +94,13 @@ public class WorkflowService {
                 .filter(a -> a.stepId().equals(step.id()))
                 .toList();
         return new StepDetail(step, stepAttempts);
+    }
+
+    @Transactional(readOnly = true)
+    public WorkflowPage listWorkflows(WorkflowStatus status, int page, int size) {
+        String filter = status == null ? null : status.name();
+        List<WorkflowRow> items = workflows.findPage(filter, size, (long) page * size);
+        return new WorkflowPage(items, page, size, workflows.count(filter));
     }
 
     /** Requeues a FAILED workflow's failed steps; completed steps are kept. */

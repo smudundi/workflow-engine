@@ -1,5 +1,7 @@
 package com.example.workflow.persistence;
 
+import java.sql.Types;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -30,6 +32,36 @@ public class WorkflowRepository {
                         Columns.instant(rs, "started_at"),
                         Columns.instant(rs, "completed_at")))
                 .optional();
+    }
+
+    /** Newest first; a null status matches every workflow. */
+    public List<WorkflowRow> findPage(String status, int limit, long offset) {
+        return jdbc.sql("""
+                SELECT id, name, status, error, created_at, started_at, completed_at
+                FROM workflow
+                WHERE (CAST(:status AS text) IS NULL OR status = :status)
+                ORDER BY created_at DESC, id DESC
+                LIMIT :limit OFFSET :offset
+                """)
+                .param("status", status, Types.VARCHAR)
+                .param("limit", limit)
+                .param("offset", offset)
+                .query((rs, n) -> new WorkflowRow(
+                        rs.getObject("id", UUID.class),
+                        rs.getString("name"),
+                        rs.getString("status"),
+                        rs.getString("error"),
+                        Columns.instant(rs, "created_at"),
+                        Columns.instant(rs, "started_at"),
+                        Columns.instant(rs, "completed_at")))
+                .list();
+    }
+
+    public long count(String status) {
+        return jdbc.sql("SELECT count(*) FROM workflow WHERE (CAST(:status AS text) IS NULL OR status = :status)")
+                .param("status", status, Types.VARCHAR)
+                .query(Long.class)
+                .single();
     }
 
     public UUID insert(String name, String status, String definitionJson) {

@@ -6,6 +6,7 @@ import com.example.workflow.config.EngineProperties;
 import com.example.workflow.domain.RetryPolicy;
 import com.example.workflow.domain.StepSpec;
 import com.example.workflow.domain.WorkflowDefinition;
+import com.example.workflow.domain.WorkflowStatus;
 import com.example.workflow.engine.WorkflowService;
 import com.example.workflow.engine.WorkflowService.SubmittedWorkflow;
 import io.swagger.v3.oas.annotations.Operation;
@@ -16,6 +17,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -29,6 +32,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -76,6 +80,22 @@ public class WorkflowController {
         SubmittedWorkflow submitted = service.submit(toDefinition(request));
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(new SubmitWorkflowResponse(submitted.id(), submitted.status().name()));
+    }
+
+    @Operation(summary = "List workflows",
+            description = "Newest first. Optional status filter; page is 0-based and size is 1-100.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Page of workflows"),
+            @ApiResponse(responseCode = "400", description = "Invalid status, page, or size",
+                    content = @Content(mediaType = "application/problem+json",
+                            schema = @Schema(implementation = ProblemDetail.class)))
+    })
+    @GetMapping
+    public WorkflowPageResponse list(
+            @RequestParam(required = false) WorkflowStatus status,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        return WorkflowPageResponse.from(service.listWorkflows(status, page, size));
     }
 
     @Operation(summary = "Get workflow status", description = "Returns the workflow with all steps and attempt history.")

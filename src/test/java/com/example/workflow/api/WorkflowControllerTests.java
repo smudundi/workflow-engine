@@ -59,6 +59,54 @@ class WorkflowControllerTests {
                         + "['A to (B,C) to D to E'].value.name").value("parallel-data-pipeline"));
     }
 
+    @Test
+    void listReturnsNewestFirstWithPagingMetadata() throws Exception {
+        String first = submit(VALID);
+        String second = submit(VALID);
+        String third = submit(VALID);
+        Long total = jdbc.queryForObject("SELECT count(*) FROM workflow", Long.class);
+
+        mvc.perform(get("/api/workflows").param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(2))
+                .andExpect(jsonPath("$.content[0].id").value(third))
+                .andExpect(jsonPath("$.content[1].id").value(second))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(2))
+                .andExpect(jsonPath("$.totalElements").value(total));
+
+        mvc.perform(get("/api/workflows").param("size", "2").param("page", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].id").value(first))
+                .andExpect(jsonPath("$.page").value(1));
+    }
+
+    @Test
+    void listFiltersByStatus() throws Exception {
+        submit(VALID);
+        mvc.perform(get("/api/workflows").param("status", "PENDING").param("size", "100"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[*].status").isNotEmpty())
+                .andExpect(jsonPath("$.content[?(@.status != 'PENDING')]").isEmpty());
+    }
+
+    @Test
+    void listRejectsUnknownStatusWith400() throws Exception {
+        mvc.perform(get("/api/workflows").param("status", "BOGUS"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0]").value(org.hamcrest.Matchers.containsString("status")));
+    }
+
+    @Test
+    void listRejectsOutOfRangePagingWith400() throws Exception {
+        mvc.perform(get("/api/workflows").param("size", "101"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0]").value(org.hamcrest.Matchers.containsString("size")));
+        mvc.perform(get("/api/workflows").param("page", "-1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0]").value(org.hamcrest.Matchers.containsString("page")));
+    }
+
     private String submit(String body) throws Exception {
         String response = mvc.perform(post("/api/workflows").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
