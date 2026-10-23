@@ -2,6 +2,7 @@ package com.example.workflow.dag;
 
 import com.example.workflow.domain.RetryPolicy;
 import com.example.workflow.domain.StepSpec;
+import com.example.workflow.handler.HandlerRegistry;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -15,11 +16,15 @@ import org.springframework.stereotype.Component;
 @Component
 public class DagValidator {
 
-    // Replaced by the HandlerRegistry in US1.6.
-    static final Set<String> KNOWN_TYPES = Set.of("LOG", "SLEEP", "TRANSFORM", "FAIL");
     static final int MAX_ATTEMPTS_LIMIT = 20;
     static final long MAX_DELAY_LIMIT_MS = 3_600_000L;
     static final double MAX_MULTIPLIER = 10.0;
+
+    private final HandlerRegistry handlers;
+
+    public DagValidator(HandlerRegistry handlers) {
+        this.handlers = handlers;
+    }
 
     /** Returns all problems found; an empty list means the definition is valid. */
     public List<String> validate(List<StepSpec> steps) {
@@ -37,9 +42,9 @@ public class DagValidator {
         }
 
         for (StepSpec step : steps) {
-            if (!KNOWN_TYPES.contains(step.type())) {
+            if (!handlers.supports(step.type())) {
                 errors.add("step '" + step.id() + "' has unknown type '" + step.type()
-                        + "'; known types: " + String.join(", ", KNOWN_TYPES.stream().sorted().toList()));
+                        + "'; known types: " + String.join(", ", handlers.types()));
             }
             validateRetry(step, errors);
             validateDependencies(step, ids, errors);

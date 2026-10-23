@@ -4,6 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.workflow.domain.RetryPolicy;
 import com.example.workflow.domain.StepSpec;
+import com.example.workflow.handler.FailStepHandler;
+import com.example.workflow.handler.HandlerRegistry;
+import com.example.workflow.handler.LogStepHandler;
+import com.example.workflow.handler.SleepStepHandler;
+import com.example.workflow.handler.TransformStepHandler;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -12,7 +17,8 @@ class DagValidatorTests {
 
     private static final RetryPolicy RETRY = new RetryPolicy(3, 1000, 2.0, 30_000);
 
-    private final DagValidator validator = new DagValidator();
+    private final DagValidator validator = new DagValidator(new HandlerRegistry(List.of(
+            new LogStepHandler(), new SleepStepHandler(), new TransformStepHandler(), new FailStepHandler())));
 
     @Test
     void acceptsSequentialAndParallelDag() {
@@ -81,7 +87,7 @@ class DagValidatorTests {
         assertThat(validator.validate(steps))
                 .singleElement()
                 .asString()
-                .contains("step 'A' has unknown type 'HTTP'", "known types:");
+                .contains("step 'A' has unknown type 'HTTP'; known types: FAIL, LOG, SLEEP, TRANSFORM");
     }
 
     @Test
