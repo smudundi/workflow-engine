@@ -2,7 +2,6 @@ package com.example.workflow.worker;
 
 import com.example.workflow.config.EngineProperties;
 import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
@@ -23,7 +22,7 @@ public class WorkerLoop {
     private final ExecutorService pool;
     private final int threads;
     private final long leaseMs;
-    private final String workerId = "worker-" + UUID.randomUUID().toString().substring(0, 8);
+    private final String workerId = WorkerIds.generate();
     // Steps claimed but not yet finished; caps the claim size on each poll.
     private final AtomicInteger inFlight = new AtomicInteger();
 

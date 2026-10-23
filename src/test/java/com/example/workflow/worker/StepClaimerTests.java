@@ -9,9 +9,16 @@ import com.example.workflow.engine.WorkflowService;
 import com.example.workflow.persistence.StepRepository;
 import com.example.workflow.persistence.StepRow;
 import com.example.workflow.persistence.WorkflowRepository;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -113,6 +120,46 @@ class StepClaimerTests {
         assertThat(next).extracting(ClaimedStep::stepKey).containsExactlyInAnyOrder("B", "C");
         assertThat(next.get(0).upstreamOutputs()).containsOnlyKeys("A");
         assertThat(next.get(0).upstreamOutputs().get("A")).isEqualTo(Map.of("message", "from A"));
+    }
+
+    @Test
+    void concurrentClaimersClaimEachStepExactlyOnce() throws Exception {
+        List<StepSpec> specs = IntStream.range(0, 40)
+                .mapToObj(i -> new StepSpec("S" + i, "LOG", Map.of("message", "m"), List.of(), RETRY))
+                .toList();
+        UUID id = service.submit(new WorkflowDefinition("wide", specs)).id();
+        int claimers = 8;
+        ExecutorService pool = Executors.newFixedThreadPool(claimers);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            List<Future<List<String>>> futures = new ArrayList<>();
+            for (int w = 0; w < claimers; w++) {
+                String workerId = "w" + w;
+                futures.add(pool.submit(() -> {
+                    start.await();
+                    List<String> keys = new ArrayList<>();
+                    List<ClaimedStep> batch = claimer.claim(workerId, 3, 30_000);
+                    while (!batch.isEmpty()) {
+                        batch.forEach(step -> keys.add(step.stepKey()));
+                        batch = claimer.claim(workerId, 3, 30_000);
+                    }
+                    return keys;
+                }));
+            }
+            start.countDown();
+            List<String> all = new ArrayList<>();
+            for (Future<List<String>> future : futures) {
+                all.addAll(future.get(60, TimeUnit.SECONDS));
+            }
+
+            assertThat(all).hasSize(40).doesNotHaveDuplicates();
+            Integer attempts = jdbc.queryForObject(
+                    "SELECT count(*) FROM step_attempt a JOIN step s ON s.id = a.step_id WHERE s.workflow_id = ?",
+                    Integer.class, id);
+            assertThat(attempts).isEqualTo(40);
+        } finally {
+            pool.shutdownNow();
+        }
     }
 
     private static WorkflowDefinition diamond() {
