@@ -1,7 +1,10 @@
 package com.example.workflow.worker;
 
+import com.example.workflow.domain.BackoffPolicy;
+import com.example.workflow.domain.RetryPolicy;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -44,7 +47,6 @@ public class LeaseReaper {
     }
 
     private int reap() {
-        // Retries are immediate until US2.4 adds backoff.
         List<Expired> expired = jdbc.sql("""
                 UPDATE step SET status = CASE WHEN attempt >= max_attempts THEN 'FAILED' ELSE 'RETRYING' END,
                        last_error = 'lease expired', lease_owner = NULL, lease_expires_at = NULL,
@@ -56,14 +58,20 @@ public class LeaseReaper {
                   WHERE status = 'RUNNING' AND lease_expires_at < now()
                   -- Rows locked by a renewing or completing worker are skipped, not expired.
                   FOR UPDATE SKIP LOCKED)
-                RETURNING id, workflow_id, step_key, attempt, status
+                RETURNING id, workflow_id, step_key, attempt, status, max_attempts,
+                          backoff_initial_ms, backoff_multiplier, backoff_max_ms
                 """)
                 .query((rs, n) -> new Expired(
                         rs.getObject("id", UUID.class),
                         rs.getObject("workflow_id", UUID.class),
                         rs.getString("step_key"),
                         rs.getInt("attempt"),
-                        rs.getString("status")))
+                        rs.getString("status"),
+                        new RetryPolicy(
+                                rs.getInt("max_attempts"),
+                                rs.getLong("backoff_initial_ms"),
+                                rs.getDouble("backoff_multiplier"),
+                                rs.getLong("backoff_max_ms"))))
                 .list();
 
         for (Expired row : expired) {
@@ -76,11 +84,17 @@ public class LeaseReaper {
                     .update();
             if ("FAILED".equals(row.status())) {
                 completion.failWorkflow(row.workflowId(), "step '" + row.stepKey() + "' failed: lease expired");
+            } else {
+                long delayMs = BackoffPolicy.delayMs(row.retry(), row.attempt(), ThreadLocalRandom.current().nextDouble());
+                jdbc.sql("UPDATE step SET next_run_at = now() + CAST(:delay AS interval) WHERE id = :id")
+                        .param("delay", delayMs + " milliseconds")
+                        .param("id", row.id())
+                        .update();
             }
         }
         return expired.size();
     }
 
-    private record Expired(UUID id, UUID workflowId, String stepKey, int attempt, String status) {
+    private record Expired(UUID id, UUID workflowId, String stepKey, int attempt, String status, RetryPolicy retry) {
     }
 }

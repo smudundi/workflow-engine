@@ -1,9 +1,11 @@
 package com.example.workflow.worker;
 
+import com.example.workflow.domain.BackoffPolicy;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -62,18 +64,20 @@ public class StepCompletion {
      */
     @Transactional
     public boolean fail(ClaimedStep step, String workerId, String error) {
-        // Retries are immediate until US2.4 adds backoff.
-        boolean exhausted = step.attempt() >= step.maxAttempts();
+        boolean exhausted = step.attempt() >= step.retry().maxAttempts();
         String status = exhausted ? "FAILED" : "RETRYING";
+        long delayMs = exhausted ? 0
+                : BackoffPolicy.delayMs(step.retry(), step.attempt(), ThreadLocalRandom.current().nextDouble());
         int updated = jdbc.sql("""
                 UPDATE step SET status = :status, last_error = :error, lease_owner = NULL,
-                       lease_expires_at = NULL, next_run_at = now(),
+                       lease_expires_at = NULL, next_run_at = now() + CAST(:delay AS interval),
                        completed_at = CASE WHEN :status = 'FAILED' THEN clock_timestamp() ELSE NULL END,
                        updated_at = now()
                 WHERE id = :id AND status = 'RUNNING' AND attempt = :attempt AND lease_owner = :worker
                 """)
                 .param("status", status)
                 .param("error", error)
+                .param("delay", delayMs + " milliseconds")
                 .param("id", step.id())
                 .param("attempt", step.attempt())
                 .param("worker", workerId)

@@ -1,0 +1,17 @@
+{
+  "name": "worker-crash-recovery",
+  "steps": [
+    {
+      "id": "A",
+      "type": "SLEEP",
+      "input": { "durationMs": 60000 },
+      "retry": { "maxAttempts": 3, "initialDelayMs": 1000, "multiplier": 2.0, "maxDelayMs": 10000 }
+    },
+    {
+      "id": "B",
+      "type": "LOG",
+      "input": { "message": "long step survived a worker crash" },
+      "dependsOn": ["A"]
+    }
+  ]
+}

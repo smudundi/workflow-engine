@@ -1,5 +1,6 @@
 package com.example.workflow.worker;
 
+import com.example.workflow.domain.RetryPolicy;
 import java.util.Map;
 import java.util.UUID;
 
@@ -12,5 +13,5 @@ public record ClaimedStep(
         Map<String, Object> input,
         Map<String, Object> upstreamOutputs,
         int attempt,
-        int maxAttempts) {
+        RetryPolicy retry) {
 }

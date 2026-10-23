@@ -2,6 +2,7 @@ package com.example.workflow.worker;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.example.workflow.domain.RetryPolicy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -46,7 +47,8 @@ public class StepClaimer {
                   LIMIT :limit
                   -- Locks step rows only; the workflow row is read without a lock here.
                   FOR UPDATE OF s SKIP LOCKED)
-                RETURNING id, workflow_id, step_key, type, input::text AS input, attempt, max_attempts
+                RETURNING id, workflow_id, step_key, type, input::text AS input, attempt,
+                          max_attempts, backoff_initial_ms, backoff_multiplier, backoff_max_ms
                 """)
                 .param("worker", workerId)
                 .param("lease", leaseMs + " milliseconds")
@@ -58,7 +60,11 @@ public class StepClaimer {
                         rs.getString("type"),
                         rs.getString("input"),
                         rs.getInt("attempt"),
-                        rs.getInt("max_attempts")))
+                        new RetryPolicy(
+                                rs.getInt("max_attempts"),
+                                rs.getLong("backoff_initial_ms"),
+                                rs.getDouble("backoff_multiplier"),
+                                rs.getLong("backoff_max_ms"))))
                 .list();
 
         return rows.stream().map(row -> toClaimed(row, workerId)).toList();
@@ -78,7 +84,7 @@ public class StepClaimer {
                 .update();
         return new ClaimedStep(row.id(), row.workflowId(), row.stepKey(), row.type(),
                 readMap(row.inputJson()), upstreamOutputs(row.workflowId(), row.stepKey()),
-                row.attempt(), row.maxAttempts());
+                row.attempt(), row.retry());
     }
 
     private Map<String, Object> upstreamOutputs(UUID workflowId, String stepKey) {
@@ -114,7 +120,7 @@ public class StepClaimer {
     }
 
     private record ClaimRow(UUID id, UUID workflowId, String stepKey, String type,
-                            String inputJson, int attempt, int maxAttempts) {
+                            String inputJson, int attempt, RetryPolicy retry) {
     }
 
     private record UpstreamRow(String stepKey, String outputJson) {
