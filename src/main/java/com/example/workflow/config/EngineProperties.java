@@ -17,6 +17,7 @@ public record EngineProperties(@DefaultValue Retry retry, @DefaultValue Worker w
     public record Worker(
             @DefaultValue("true") boolean enabled,
             @DefaultValue("4") int threads,
-            @DefaultValue("30s") Duration lease) {
+            @DefaultValue("30s") Duration lease,
+            @DefaultValue("20s") Duration shutdownTimeout) {
     }
 }

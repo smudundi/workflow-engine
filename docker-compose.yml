@@ -46,6 +46,8 @@ services:
       SPRING_DATASOURCE_PASSWORD: workflow
     deploy:
       replicas: 2
+    # Must exceed engine.worker.shutdown-timeout (20s) so the drain finishes before SIGKILL.
+    stop_grace_period: 30s
     depends_on:
       engine-api:
         condition: service_healthy
