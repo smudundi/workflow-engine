@@ -1,6 +1,7 @@
 package com.example.workflow.engine;
 
 import com.example.workflow.dag.DagValidator;
+import com.example.workflow.domain.ConflictException;
 import com.example.workflow.domain.InvalidWorkflowException;
 import com.example.workflow.domain.NotFoundException;
 import com.example.workflow.domain.StepSpec;
@@ -90,6 +91,20 @@ public class WorkflowService {
                 .filter(a -> a.stepId().equals(step.id()))
                 .toList();
         return new StepDetail(step, stepAttempts);
+    }
+
+    /** Requeues a FAILED workflow's failed steps; completed steps are kept. */
+    @Transactional
+    public void retry(UUID id) {
+        // Lock order matches StepCompletion: steps before the workflow row.
+        steps.lockFailed(id);
+        String status = workflows.lockStatus(id)
+                .orElseThrow(() -> new NotFoundException("workflow " + id + " not found"));
+        if (!WorkflowStatus.FAILED.name().equals(status)) {
+            throw new ConflictException("workflow " + id + " is " + status + "; only FAILED workflows can be retried");
+        }
+        steps.resetFailed(id);
+        workflows.markRunning(id);
     }
 
     private WorkflowRow findWorkflow(UUID id) {

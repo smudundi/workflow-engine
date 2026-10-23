@@ -102,6 +102,23 @@ public class WorkflowController {
         return WorkflowResponse.StepResponse.from(service.getStep(id, stepId));
     }
 
+    @Operation(summary = "Retry a failed workflow",
+            description = "Requeues FAILED steps and moves the workflow to RUNNING. Completed steps are not re-run.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Workflow requeued"),
+            @ApiResponse(responseCode = "404", description = "Unknown workflow id",
+                    content = @Content(mediaType = "application/problem+json",
+                            schema = @Schema(implementation = ProblemDetail.class))),
+            @ApiResponse(responseCode = "409", description = "Workflow is not FAILED",
+                    content = @Content(mediaType = "application/problem+json",
+                            schema = @Schema(implementation = ProblemDetail.class)))
+    })
+    @PostMapping("/{id}/retry")
+    public WorkflowResponse retry(@PathVariable UUID id) {
+        service.retry(id);
+        return WorkflowResponse.from(service.getWorkflow(id));
+    }
+
     private WorkflowDefinition toDefinition(SubmitWorkflowRequest request) {
         List<StepSpec> steps = request.steps().stream()
                 .map(this::toStepSpec)

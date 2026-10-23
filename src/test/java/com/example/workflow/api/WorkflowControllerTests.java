@@ -151,4 +151,114 @@ class WorkflowControllerTests {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors[0]").value(org.hamcrest.Matchers.containsString("steps[0].id")));
     }
+
+    @Test
+    void retryOfFailedWorkflowReturns200AndRunning() throws Exception {
+        String id = submit(VALID);
+        jdbc.update("UPDATE workflow SET status = 'FAILED', error = 'step ''A'' failed: boom' WHERE id = ?",
+                UUID.fromString(id));
+        jdbc.update("UPDATE step SET status = 'FAILED', attempt = 1, last_error = 'boom' "
+                + "WHERE workflow_id = ? AND step_key = 'A'", UUID.fromString(id));
+
+        mvc.perform(post("/api/workflows/" + id + "/retry"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("RUNNING"))
+                .andExpect(jsonPath("$.steps[0].stepId").value("A"))
+                .andExpect(jsonPath("$.steps[0].status").value("PENDING"));
+    }
+
+    @Test
+    void retryOfPendingWorkflowReturns409() throws Exception {
+        String id = submit(VALID);
+
+        mvc.perform(post("/api/workflows/" + id + "/retry"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("only FAILED")));
+    }
+
+    @Test
+    void retryOfUnknownWorkflowReturns404() throws Exception {
+        mvc.perform(post("/api/workflows/" + UUID.randomUUID() + "/retry"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void retryOfRunningWorkflowReturns409() throws Exception {
+        String id = submit(VALID);
+        jdbc.update("UPDATE workflow SET status = 'RUNNING' WHERE id = ?", UUID.fromString(id));
+
+        mvc.perform(post("/api/workflows/" + id + "/retry"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("RUNNING")));
+    }
+
+    @Test
+    void retryOfCompletedWorkflowReturns409() throws Exception {
+        String id = submit(VALID);
+        jdbc.update("UPDATE workflow SET status = 'COMPLETED' WHERE id = ?", UUID.fromString(id));
+
+        mvc.perform(post("/api/workflows/" + id + "/retry"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("COMPLETED")));
+    }
+
+    @Test
+    void retryKeepsCompletedStepAndAttemptHistoryAndResetsFailedStep() throws Exception {
+        String id = submit(VALID);
+        UUID wf = UUID.fromString(id);
+        jdbc.update("UPDATE workflow SET status = 'FAILED', error = 'step ''B'' failed: boom' WHERE id = ?", wf);
+        jdbc.update("UPDATE step SET status = 'COMPLETED', attempt = 1, output = CAST(? AS jsonb) "
+                + "WHERE workflow_id = ? AND step_key = 'A'", "{\"message\": \"start\"}", wf);
+        jdbc.update("UPDATE step SET status = 'FAILED', attempt = 2, last_error = 'boom' "
+                + "WHERE workflow_id = ? AND step_key = 'B'", wf);
+        jdbc.update("INSERT INTO step_attempt (step_id, attempt_no, worker_id, status, finished_at) "
+                + "SELECT id, 1, 'worker-1', 'SUCCEEDED', now() FROM step WHERE workflow_id = ? AND step_key = 'A'", wf);
+        jdbc.update("INSERT INTO step_attempt (step_id, attempt_no, worker_id, status, error, finished_at) "
+                + "SELECT id, 2, 'worker-2', 'FAILED', 'boom', now() FROM step WHERE workflow_id = ? AND step_key = 'B'", wf);
+
+        mvc.perform(post("/api/workflows/" + id + "/retry"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("RUNNING"))
+                .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.steps[0].stepId").value("A"))
+                .andExpect(jsonPath("$.steps[0].status").value("COMPLETED"))
+                .andExpect(jsonPath("$.steps[0].output.message").value("start"))
+                .andExpect(jsonPath("$.steps[0].attempts.length()").value(1))
+                .andExpect(jsonPath("$.steps[1].stepId").value("B"))
+                .andExpect(jsonPath("$.steps[1].status").value("PENDING"))
+                .andExpect(jsonPath("$.steps[1].attempt").value(0))
+                .andExpect(jsonPath("$.steps[1].lastError").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.steps[1].attempts.length()").value(1))
+                .andExpect(jsonPath("$.steps[1].attempts[0].attemptNo").value(2))
+                .andExpect(jsonPath("$.steps[1].attempts[0].status").value("FAILED"));
+    }
+
+    @Test
+    void retryResetsFailedStepVisibleThroughStepEndpoint() throws Exception {
+        String id = submit(VALID);
+        UUID wf = UUID.fromString(id);
+        jdbc.update("UPDATE workflow SET status = 'FAILED' WHERE id = ?", wf);
+        jdbc.update("UPDATE step SET status = 'FAILED', attempt = 3, last_error = 'boom' "
+                + "WHERE workflow_id = ? AND step_key = 'B'", wf);
+
+        mvc.perform(post("/api/workflows/" + id + "/retry")).andExpect(status().isOk());
+
+        mvc.perform(get("/api/workflows/" + id + "/steps/B"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.attempt").value(0))
+                .andExpect(jsonPath("$.lastError").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test
+    void secondRetryOfSameWorkflowReturns409() throws Exception {
+        String id = submit(VALID);
+        jdbc.update("UPDATE workflow SET status = 'FAILED' WHERE id = ?", UUID.fromString(id));
+
+        mvc.perform(post("/api/workflows/" + id + "/retry")).andExpect(status().isOk());
+
+        mvc.perform(post("/api/workflows/" + id + "/retry"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("RUNNING")));
+    }
 }

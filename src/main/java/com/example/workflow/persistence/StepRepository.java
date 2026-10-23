@@ -75,6 +75,27 @@ public class StepRepository {
                 .update();
     }
 
+    /** Locks the FAILED steps of a workflow, to be taken before the workflow row. */
+    public void lockFailed(UUID workflowId) {
+        jdbc.sql("SELECT id FROM step WHERE workflow_id = :workflowId AND status = 'FAILED' "
+                        + "ORDER BY step_key FOR UPDATE")
+                .param("workflowId", workflowId)
+                .query(UUID.class)
+                .list();
+    }
+
+    /** Requeues FAILED steps from a clean attempt count; attempt history is kept. */
+    public void resetFailed(UUID workflowId) {
+        jdbc.sql("""
+                -- attempt restarts per retry round; step_attempt rows remain as history
+                UPDATE step SET status = 'PENDING', attempt = 0, next_run_at = now(), last_error = NULL,
+                       lease_owner = NULL, lease_expires_at = NULL, completed_at = NULL, updated_at = now()
+                WHERE workflow_id = :workflowId AND status = 'FAILED'
+                """)
+                .param("workflowId", workflowId)
+                .update();
+    }
+
     private StepRow mapStep(ResultSet rs) throws SQLException {
         return new StepRow(
                 rs.getObject("id", UUID.class),

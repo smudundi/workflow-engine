@@ -44,4 +44,21 @@ public class WorkflowRepository {
                 .query(UUID.class)
                 .single();
     }
+
+    /** Locks the workflow row and returns its status. */
+    public Optional<String> lockStatus(UUID id) {
+        return jdbc.sql("SELECT status FROM workflow WHERE id = :id FOR UPDATE")
+                .param("id", id)
+                .query(String.class)
+                .optional();
+    }
+
+    public void markRunning(UUID id) {
+        jdbc.sql("""
+                UPDATE workflow SET status = 'RUNNING', error = NULL, completed_at = NULL, updated_at = now()
+                WHERE id = :id
+                """)
+                .param("id", id)
+                .update();
+    }
 }
