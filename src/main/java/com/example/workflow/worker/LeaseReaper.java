@@ -2,6 +2,8 @@ package com.example.workflow.worker;
 
 import com.example.workflow.domain.BackoffPolicy;
 import com.example.workflow.domain.RetryPolicy;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
@@ -21,11 +23,14 @@ public class LeaseReaper {
     private final JdbcClient jdbc;
     private final StepCompletion completion;
     private final TransactionTemplate tx;
+    private final Counter reapedSteps;
 
-    public LeaseReaper(JdbcClient jdbc, StepCompletion completion, TransactionTemplate tx) {
+    public LeaseReaper(JdbcClient jdbc, StepCompletion completion, TransactionTemplate tx, MeterRegistry meters) {
         this.jdbc = jdbc;
         this.completion = completion;
         this.tx = tx;
+        this.reapedSteps = Counter.builder("workflow.steps.reaped")
+                .description("Steps recovered from expired leases").register(meters);
     }
 
     // Scheduling is enabled by WorkerConfiguration, so the reaper runs only in worker roles.
@@ -92,6 +97,7 @@ public class LeaseReaper {
                         .update();
             }
         }
+        reapedSteps.increment(expired.size());
         return expired.size();
     }
 

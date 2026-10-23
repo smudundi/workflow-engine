@@ -29,3 +29,7 @@ springdoc:
 
 engine:
   role: ${ENGINE_ROLE:all}
+
+logging:
+  pattern:
+    level: "%5p [worker=%X{workerId:-} workflow=%X{workflowId:-} step=%X{stepId:-}]"

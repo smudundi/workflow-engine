@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.example.workflow.domain.RetryPolicy;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,10 +22,13 @@ public class StepClaimer {
 
     private final JdbcClient jdbc;
     private final ObjectMapper json;
+    private final Counter claimedSteps;
 
-    public StepClaimer(JdbcClient jdbc, ObjectMapper json) {
+    public StepClaimer(JdbcClient jdbc, ObjectMapper json, MeterRegistry meters) {
         this.jdbc = jdbc;
         this.json = json;
+        this.claimedSteps = Counter.builder("workflow.steps.claimed")
+                .description("Steps claimed by workers").register(meters);
     }
 
     /**
@@ -67,6 +72,7 @@ public class StepClaimer {
                                 rs.getLong("backoff_max_ms"))))
                 .list();
 
+        claimedSteps.increment(rows.size());
         return rows.stream().map(row -> toClaimed(row, workerId)).toList();
     }
 

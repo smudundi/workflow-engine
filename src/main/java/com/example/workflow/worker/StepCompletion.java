@@ -3,6 +3,8 @@ package com.example.workflow.worker;
 import com.example.workflow.domain.BackoffPolicy;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
@@ -19,10 +21,19 @@ public class StepCompletion {
 
     private final JdbcClient jdbc;
     private final ObjectMapper json;
+    private final Counter completedSteps;
+    private final Counter failedSteps;
+    private final Counter retriedSteps;
 
-    public StepCompletion(JdbcClient jdbc, ObjectMapper json) {
+    public StepCompletion(JdbcClient jdbc, ObjectMapper json, MeterRegistry meters) {
         this.jdbc = jdbc;
         this.json = json;
+        this.completedSteps = Counter.builder("workflow.steps.completed")
+                .description("Steps completed successfully").register(meters);
+        this.failedSteps = Counter.builder("workflow.steps.failed")
+                .description("Steps that exhausted their attempts").register(meters);
+        this.retriedSteps = Counter.builder("workflow.steps.retried")
+                .description("Failed attempts rescheduled for retry").register(meters);
     }
 
     /** Returns false when the lease was lost and the result was discarded. */
@@ -44,6 +55,7 @@ public class StepCompletion {
             return false;
         }
         finishAttempt(step, "SUCCEEDED", null);
+        completedSteps.increment();
         // A dependent becomes claimable once its remaining_deps counter reaches 0.
         jdbc.sql("""
                 UPDATE step SET remaining_deps = remaining_deps - 1, updated_at = now()
@@ -87,7 +99,10 @@ public class StepCompletion {
         }
         finishAttempt(step, "FAILED", error);
         if (exhausted) {
+            failedSteps.increment();
             failWorkflow(step.workflowId(), "step '" + step.stepKey() + "' failed: " + error);
+        } else {
+            retriedSteps.increment();
         }
         return true;
     }

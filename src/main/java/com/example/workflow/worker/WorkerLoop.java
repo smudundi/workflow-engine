@@ -6,6 +6,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -50,11 +51,16 @@ public class WorkerLoop {
     }
 
     private void runClaimed(ClaimedStep step) {
+        MDC.put("workerId", workerId);
+        MDC.put("workflowId", step.workflowId().toString());
+        MDC.put("stepId", step.stepKey());
         try {
+            log.info("started attempt {}", step.attempt());
             executor.run(step, workerId, leaseMs);
         } catch (RuntimeException e) {
             log.error("unexpected error while running step {}", step.id(), e);
         } finally {
+            MDC.clear();
             inFlight.decrementAndGet();
         }
     }
