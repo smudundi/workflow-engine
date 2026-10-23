@@ -38,7 +38,7 @@ public class StepClaimer {
         List<ClaimRow> rows = jdbc.sql("""
                 UPDATE step SET status = 'RUNNING', attempt = attempt + 1, lease_owner = :worker,
                        lease_expires_at = now() + CAST(:lease AS interval),
-                       started_at = COALESCE(started_at, now()), updated_at = now()
+                       started_at = COALESCE(started_at, clock_timestamp()), updated_at = now()
                 WHERE id IN (
                   SELECT s.id FROM step s JOIN workflow w ON w.id = s.workflow_id
                   WHERE s.status IN ('PENDING', 'RETRYING') AND s.remaining_deps = 0

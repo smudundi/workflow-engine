@@ -44,8 +44,6 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/workflow
       SPRING_DATASOURCE_USERNAME: workflow
       SPRING_DATASOURCE_PASSWORD: workflow
-    deploy:
-      replicas: 2
     depends_on:
       engine-api:
         condition: service_healthy

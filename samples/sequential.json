@@ -1,0 +1,22 @@
+{
+  "name": "sequential-pipeline",
+  "steps": [
+    {
+      "id": "A",
+      "type": "LOG",
+      "input": { "message": "raw customer data" }
+    },
+    {
+      "id": "B",
+      "type": "TRANSFORM",
+      "input": { "op": "uppercase" },
+      "dependsOn": ["A"]
+    },
+    {
+      "id": "C",
+      "type": "LOG",
+      "input": { "message": "sequential pipeline finished" },
+      "dependsOn": ["B"]
+    }
+  ]
+}

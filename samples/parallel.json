@@ -1,0 +1,34 @@
+{
+  "name": "parallel-data-pipeline",
+  "steps": [
+    {
+      "id": "A",
+      "type": "SLEEP",
+      "input": { "durationMs": 500 }
+    },
+    {
+      "id": "B",
+      "type": "SLEEP",
+      "input": { "durationMs": 3000 },
+      "dependsOn": ["A"]
+    },
+    {
+      "id": "C",
+      "type": "SLEEP",
+      "input": { "durationMs": 3000 },
+      "dependsOn": ["A"]
+    },
+    {
+      "id": "D",
+      "type": "TRANSFORM",
+      "input": { "op": "merge" },
+      "dependsOn": ["B", "C"]
+    },
+    {
+      "id": "E",
+      "type": "LOG",
+      "input": { "message": "results published" },
+      "dependsOn": ["D"]
+    }
+  ]
+}

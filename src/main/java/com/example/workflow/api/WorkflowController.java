@@ -37,7 +37,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "Workflows", description = "Submit workflows and query their status")
 public class WorkflowController {
 
-    // Sample from docs/samples/parallel.json: A runs first, B and C run in parallel, D merges, E publishes.
+    // Sample from samples/parallel.json: A runs first, B and C run in parallel, D merges, E publishes.
     private static final String SAMPLE_WORKFLOW = """
             {
               "name": "parallel-data-pipeline",

@@ -27,9 +27,10 @@ public class StepCompletion {
     @Transactional
     public boolean complete(ClaimedStep step, String workerId, Map<String, Object> output) {
         // Fenced: applies only if this worker still holds the current attempt.
+        // clock_timestamp(): now() is the transaction start, which can precede the commit.
         int updated = jdbc.sql("""
                 UPDATE step SET status = 'COMPLETED', output = CAST(:output AS jsonb), last_error = NULL,
-                       lease_owner = NULL, lease_expires_at = NULL, completed_at = now(), updated_at = now()
+                       lease_owner = NULL, lease_expires_at = NULL, completed_at = clock_timestamp(), updated_at = now()
                 WHERE id = :id AND status = 'RUNNING' AND attempt = :attempt AND lease_owner = :worker
                 """)
                 .param("output", toJson(output))
@@ -67,7 +68,7 @@ public class StepCompletion {
         int updated = jdbc.sql("""
                 UPDATE step SET status = :status, last_error = :error, lease_owner = NULL,
                        lease_expires_at = NULL, next_run_at = now(),
-                       completed_at = CASE WHEN :status = 'FAILED' THEN now() ELSE NULL END,
+                       completed_at = CASE WHEN :status = 'FAILED' THEN clock_timestamp() ELSE NULL END,
                        updated_at = now()
                 WHERE id = :id AND status = 'RUNNING' AND attempt = :attempt AND lease_owner = :worker
                 """)
@@ -89,7 +90,7 @@ public class StepCompletion {
 
     private void finishAttempt(ClaimedStep step, String status, String error) {
         jdbc.sql("""
-                UPDATE step_attempt SET status = :status, error = :error, finished_at = now()
+                UPDATE step_attempt SET status = :status, error = :error, finished_at = clock_timestamp()
                 WHERE step_id = :id AND attempt_no = :attempt
                 """)
                 .param("status", status)
