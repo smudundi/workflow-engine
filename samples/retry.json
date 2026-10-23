@@ -1,0 +1,23 @@
+{
+  "name": "retry-with-backoff",
+  "steps": [
+    {
+      "id": "A",
+      "type": "LOG",
+      "input": { "message": "starting retry demo" }
+    },
+    {
+      "id": "B",
+      "type": "FLAKY",
+      "input": { "failUntilAttempt": 3 },
+      "dependsOn": ["A"],
+      "retry": { "maxAttempts": 4, "initialDelayMs": 1000, "multiplier": 2.0, "maxDelayMs": 10000 }
+    },
+    {
+      "id": "C",
+      "type": "LOG",
+      "input": { "message": "flaky step recovered" },
+      "dependsOn": ["B"]
+    }
+  ]
+}

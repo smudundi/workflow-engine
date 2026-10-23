@@ -89,7 +89,7 @@ class WorkflowControllerTests {
     @Test
     void unknownTypeReturns400() throws Exception {
         String unknown = """
-                { "name": "x", "steps": [ { "id": "A", "type": "HTTP" } ] }
+                { "name": "x", "steps": [ { "id": "A", "type": "NOPE" } ] }
                 """;
         mvc.perform(post("/api/workflows").contentType(MediaType.APPLICATION_JSON).content(unknown))
                 .andExpect(status().isBadRequest())

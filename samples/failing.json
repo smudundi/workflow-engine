@@ -1,0 +1,23 @@
+{
+  "name": "failing-then-manual-retry",
+  "steps": [
+    {
+      "id": "A",
+      "type": "LOG",
+      "input": { "message": "starting failure demo" }
+    },
+    {
+      "id": "B",
+      "type": "FLAKY",
+      "input": { "failUntilAttempt": 4 },
+      "dependsOn": ["A"],
+      "retry": { "maxAttempts": 3, "initialDelayMs": 500, "multiplier": 2.0, "maxDelayMs": 5000 }
+    },
+    {
+      "id": "C",
+      "type": "LOG",
+      "input": { "message": "recovered after manual retry" },
+      "dependsOn": ["B"]
+    }
+  ]
+}

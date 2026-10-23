@@ -82,9 +82,14 @@ public class StepClaimer {
                 .param("attempt", row.attempt())
                 .param("worker", workerId)
                 .update();
+        // Counts the row just inserted, so the total includes this claim.
+        long totalAttempts = jdbc.sql("SELECT count(*) FROM step_attempt WHERE step_id = :id")
+                .param("id", row.id())
+                .query(Long.class)
+                .single();
         return new ClaimedStep(row.id(), row.workflowId(), row.stepKey(), row.type(),
                 readMap(row.inputJson()), upstreamOutputs(row.workflowId(), row.stepKey()),
-                row.attempt(), row.retry());
+                row.attempt(), (int) totalAttempts, row.retry());
     }
 
     private Map<String, Object> upstreamOutputs(UUID workflowId, String stepKey) {

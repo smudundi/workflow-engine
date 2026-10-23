@@ -32,7 +32,7 @@ public class StepExecutor {
         try {
             StepHandler handler = handlers.get(step.type());
             result = handler.execute(new StepContext(step.id().toString(), step.attempt(),
-                    step.input(), step.upstreamOutputs()));
+                    step.totalAttempts(), step.input(), step.upstreamOutputs()));
         } catch (RuntimeException e) {
             failure = e;
         }

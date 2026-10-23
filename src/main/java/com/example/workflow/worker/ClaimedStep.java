@@ -4,7 +4,7 @@ import com.example.workflow.domain.RetryPolicy;
 import java.util.Map;
 import java.util.UUID;
 
-/** A step claimed by a worker; {@code attempt} is the attempt number of this claim. */
+/** A step claimed by a worker; {@code attempt} resets on manual retry, {@code totalAttempts} does not. */
 public record ClaimedStep(
         UUID id,
         UUID workflowId,
@@ -13,5 +13,6 @@ public record ClaimedStep(
         Map<String, Object> input,
         Map<String, Object> upstreamOutputs,
         int attempt,
+        int totalAttempts,
         RetryPolicy retry) {
 }
